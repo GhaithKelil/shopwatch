@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopWatch</title>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --ink: #1c1917; --muted: #78716c; --line: #e7e5e4;
+    --accent: #0f766e; --accent-ink: #ffffff; --red: #dc2626; --amber: #d97706; --green: #16a34a;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0c0a09; --panel: #171412; --ink: #f5f5f4; --muted: #a8a29e; --line: #292524;
+            --accent: #2dd4bf; --accent-ink: #042f2e; --red: #f87171; --amber: #fbbf24; --green: #4ade80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px 64px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }
+  .muted { color: var(--muted); }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0; }
+  .brand { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+  .brand small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 8px; letter-spacing: 0; }
+  .right { display: flex; align-items: center; gap: 14px; }
+  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; flex: none; }
+  .dot.bad { background: var(--red); } .dot.warn { background: var(--amber); }
+  .btn { border: 1px solid var(--line); background: var(--panel); padding: 7px 14px; border-radius: 8px; font-weight: 500; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { opacity: .9; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+  .stat { padding: 18px 20px; border-right: 1px solid var(--line); min-width: 0; }
+  .stat:last-child { border-right: 0; }
+  .stat .label { color: var(--muted); font-size: 12.5px; }
+  .stat .value { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin-top: 2px; }
+  .stat .sub { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  section { margin-top: 36px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  h2 .count { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .link { background: none; border: 0; color: var(--muted); padding: 4px 2px; }
+  .link:hover { color: var(--ink); text-decoration: underline; }
+
+  .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+  .alert { display: flex; gap: 12px; align-items: flex-start; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .alert:last-child { border-bottom: 0; }
+  .alert .dot { margin-top: 7px; }
+  .alert .body { flex: 1; min-width: 0; }
+  .alert .msg { overflow-wrap: anywhere; }
+  .alert .meta { color: var(--muted); font-size: 12.5px; }
+  .empty { padding: 22px 16px; color: var(--muted); text-align: center; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 2px; }
+  .tab { background: none; border: 0; padding: 6px 12px; border-radius: 8px; color: var(--muted); font-weight: 500; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { background: var(--ink); color: var(--bg); }
+  .search { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 7px 12px; width: 260px; max-width: 100%; font: inherit; }
+  .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12.5px; padding: 10px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  td.num, th.num { text-align: right; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; }
+  .pager { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: 100%; max-width: 480px; max-height: 88vh; overflow: auto; padding: 22px; }
+  .modal h3 { margin: 0; font-size: 16px; }
+  .row { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .row:last-of-type { border-bottom: 0; }
+  .row span:first-child { color: var(--muted); }
+  .row span:last-child { text-align: right; overflow-wrap: anywhere; }
+  .notice { border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 8px; padding: 10px 12px; margin: 14px 0 6px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  #toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 20; }
+  .toast { background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(2) { border-right: 0; }
+    .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .brand small, .status span { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">ShopWatch<small id="shop-names"></small></div>
+    <div class="right">
+      <div class="status"><span id="system-status-dot" class="dot"></span><span id="system-status-indicator">Healthy</span></div>
+      <button id="sync-btn" class="btn primary" onclick="triggerSync()"><span id="sync-btn-text">Sync now</span></button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Orders</div><div class="value" id="metric-total-orders">&ndash;</div><div class="sub">all time</div></div>
+    <div class="stat"><div class="label">Open alerts</div><div class="value" id="metric-open-alerts">&ndash;</div><div class="sub"><span id="metric-critical">0 critical</span> &middot; <span id="metric-warning">0 warnings</span></div></div>
+    <div class="stat"><div class="label">Days to ship</div><div class="value" id="metric-avg-fulfillment">&ndash;</div><div class="sub">average, paid to shipped</div></div>
+    <div class="stat"><div class="label">Last sync</div><div class="value" id="metric-sync-status" style="font-size:20px;margin-top:8px">&ndash;</div><div class="sub" id="metric-sync-time">&nbsp;</div></div>
+  </div>
+
+  <section id="alerts-section">
+    <div class="section-head">
+      <h2>Alerts<span class="count" id="alerts-badge">0</span></h2>
+      <div>
+        <button id="alert-tab-all" class="link" onclick="setAlertSeverityFilter('all')"><b>All</b></button>
+        <button id="alert-tab-critical" class="link" onclick="setAlertSeverityFilter('CRITICAL')">Critical</button>
+        <button id="alert-tab-warning" class="link" onclick="setAlertSeverityFilter('WARNING')">Warnings</button>
+        <button class="link" onclick="resolveAllVisibleAlerts()">Resolve all</button>
+      </div>
+    </div>
+    <div class="card" id="alerts-container"><div class="empty">Nothing needs attention.</div></div>
+  </section>
+
+  <section id="orders-section">
+    <div class="toolbar">
+      <div class="tabs">
+        <button id="tab-all" class="tab active" onclick="setFilterTab('all')">All</button>
+        <button id="tab-warnings" class="tab" onclick="setFilterTab('warnings')">Problems</button>
+        <button id="tab-unshipped" class="tab" onclick="setFilterTab('unshipped')">Unshipped</button>
+        <button id="tab-transit" class="tab" onclick="setFilterTab('transit')">Shipped</button>
+      </div>
+      <input id="search-input" class="search" type="search" placeholder="Search order, buyer, tracking" oninput="handleSearch()">
+    </div>
+    <div class="card">
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Order</th><th>Date</th><th>Buyer</th><th>Country</th><th class="num">Total</th><th>Status</th><th>Tracking</th><th></th></tr></thead>
+          <tbody id="orders-tbody"><tr><td colspan="8" class="empty">Loading&hellip;</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <span id="pagination-info">0 orders</span>
+        <span><button id="prev-page-btn" class="link" onclick="prevPage()" disabled>&larr; Previous</button>
+        <button id="next-page-btn" class="link" onclick="nextPage()" disabled>Next &rarr;</button></span>
+      </div>
+    </div>
+  </section>
+
+  <p class="muted" style="margin-top:32px;font-size:12.5px">
+    <a class="muted" href="/docs" target="_blank">API docs</a> &middot; <a class="muted" href="/health" target="_blank">Health</a>
+  </p>
+</div>
+
+<div id="order-modal" class="overlay" onclick="if (event.target === this) closeOrderModal()">
+  <div class="modal">
+    <h3 id="modal-order-title">Order</h3>
+    <div class="muted mono" id="modal-order-timestamp" style="margin-bottom:8px">&nbsp;</div>
+    <div id="modal-content"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeOrderModal()">Close</button></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+  let currentTab = 'all', currentAlertSeverity = 'all', currentOffset = 0;
+  const pageSize = 25;
+  let allOrders = [], filteredOrders = [], rawAlerts = [], alertOrderMap = {}, searchTimer = null;
+  const $ = (id) => document.getElementById(id);
+
+  function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function toast(message) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = message;
+    $('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 2800);
+  }
+
+  const fmtDate = (v) => {
+    const d = new Date(v);
+    return isNaN(d) ? 'â€“' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const isClosed = (o) => /refund|cancel/i.test(o.status || '');
+  const hasTracking = (o) => !!(o.tracking_code && o.tracking_code.trim());
+
+  async function loadStats() {
+    try {
+      const d = await (await fetch('/api/stats')).json();
+      $('shop-names').textContent = Object.keys(d.orders_by_shop || {}).join(', ');
+      $('metric-total-orders').textContent = d.total_orders;
+      $('metric-open-alerts').textContent = d.open_alerts_count;
+      $('metric-critical').textContent = `${d.critical_alerts_count} critical`;
+      $('metric-warning').textContent = `${d.warning_alerts_count} warnings`;
+      $('metric-avg-fulfillment').textContent = d.avg_fulfillment_days ?? 'â€“';
+      const run = d.last_run;
+      const ok = !run || run.ok;
+      $('system-status-indicator').textContent = run ? (ok ? 'Healthy' : 'Sync failing') : 'No sync yet';
+      $('system-status-dot').className = 'dot' + (ok ? (run ? '' : ' warn') : ' bad');
+      $('metric-sync-status').textContent = run ? (ok ? 'OK' : 'Failed') : 'Never';
+      $('metric-sync-time').textContent = run ? `${new Date(run.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} Â· ${run.orders_fetched} orders` : 'Press Sync now';
+    } catch (e) { console.error('stats', e); }
+  }
+
+  async function loadAlerts() {
+    try {
+      rawAlerts = await (await fetch('/api/alerts')).json();
+      $('alerts-badge').textContent = rawAlerts.length;
+      alertOrderMap = {};
+      rawAlerts.forEach((a) => {
+        if (!a.order_id) return;
+        const k = String(a.order_id);
+        if (!alertOrderMap[k] || a.severity === 'CRITICAL') alertOrderMap[k] = a;
+      });
+      renderAlerts();
+    } catch (e) { console.error('alerts', e); }
+  }
+
+  function setAlertSeverityFilter(sev) {
+    currentAlertSeverity = sev;
+    [['all', 'all'], ['CRITICAL', 'critical'], ['WARNING', 'warning']].forEach(([s, id]) => {
+      const b = $('alert-tab-' + id);
+      b.innerHTML = s === sev ? `<b>${b.textContent}</b>` : b.textContent;
+    });
+    renderAlerts();
+  }
+
+  function renderAlerts() {
+    const list = rawAlerts.filter((a) => currentAlertSeverity === 'all' || a.severity === currentAlertSeverity);
+    const box = $('alerts-container');
+    if (!list.length) { box.innerHTML = '<div class="empty">Nothing needs attention.</div>'; return; }
+    box.innerHTML = list.map((a) => `
+      <div class="alert">
+        <span class="dot ${a.severity === 'CRITICAL' ? 'bad' : 'warn'}"></span>
+        <div class="body">
+          <div class="msg">${esc(a.message)}</div>
+          <div class="meta">${esc(a.shop_name)} &middot; ${fmtDate(a.created_at)}${a.order_id ? ` &middot; <a href="#" class="muted" data-order="${esc(a.order_id)}">Find order #${esc(a.order_id)}</a>` : ''}</div>
+        </div>
+        <button class="link" data-resolve="${esc(a.id)}">Resolve</button>
+      </div>`).join('');
+  }
+
+  $('alerts-container').addEventListener('click', (e) => {
+    const r = e.target.closest('[data-resolve]');
+    if (r) return resolveAlert(Number(r.dataset.resolve));
+    const o = e.target.closest('[data-order]');
+    if (o) { e.preventDefault(); filterByOrderId(o.dataset.order); }
+  });
+
+  function filterByOrderId(id) {
+    $('search-input').value = id;
+    setFilterTab('all');
+    $('orders-section').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function loadOrders() {
+    try {
+      let fetched = [], total = 0;
+      do {
+        const d = await (await fetch(`/api/orders?limit=5000&offset=${fetched.length}`)).json();
+        const page = d.orders || [];
+        total = d.total || 0;
+        fetched = fetched.concat(page);
+        if (!page.length) break;
+      } while (fetched.length < total);
+      allOrders = fetched;
+      applyFiltersAndRender(false);
+    } catch (e) { console.error('orders', e); }
+  }
+
+  function setFilterTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.id === 'tab-' + tab));
+    applyFiltersAndRender(true);
+  }
+
+  function handleSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => applyFiltersAndRender(true), 200);
+  }
+
+  function applyFiltersAndRender(reset) {
+    if (reset) currentOffset = 0;
+    const q = ($('search-input').value || '').trim().toLowerCase();
+    filteredOrders = allOrders.filter((o) => {
+      const oid = String(o.receipt_id);
+      if (currentTab === 'warnings' && !alertOrderMap[oid] && !(o.is_shipped && !hasTracking(o) && !isClosed(o))) return false;
+      if (currentTab === 'unshipped' && (o.is_shipped || isClosed(o))) return false;
+      if (currentTab === 'transit' && !o.is_shipped) return false;
+      if (!q) return true;
+      return [oid, o.buyer_name, o.buyer_id, o.tracking_code, o.country].some((f) => (f || '').toLowerCase().includes(q));
+    });
+    if (currentOffset >= filteredOrders.length) currentOffset = Math.max(0, Math.floor((filteredOrders.length - 1) / pageSize) * pageSize);
+    renderOrders();
+  }
+
+  function renderOrders() {
+    const total = filteredOrders.length;
+    const end = Math.min(currentOffset + pageSize, total);
+    $('pagination-info').textContent = total ? `${currentOffset + 1}â€“${end} of ${total}` : '0 orders';
+    $('prev-page-btn').disabled = currentOffset <= 0;
+    $('next-page-btn').disabled = end >= total;
+    const rows = filteredOrders.slice(currentOffset, end);
+    const tbody = $('orders-tbody');
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No orders match.</td></tr>'; return; }
+    tbody.innerHTML = rows.map((o) => {
+      const oid = String(o.receipt_id);
+      const a = alertOrderMap[oid];
+      const status = isClosed(o) ? ['Refunded', 'muted'] : o.is_shipped ? ['Shipped', ''] : ['Unshipped', 'amber'];
+      const flag = a ? `<span class="pill" title="${esc(a.message)}"><span class="dot ${a.severity === 'CRITICAL' ? 'bad' : 'warn'}"></span></span>` : '';
+      return `<tr data-id="${esc(oid)}">
+        <td class="mono">#${esc(oid)}</td>
+        <td class="muted">${fmtDate(o.created_at)}</td>
+        <td>${esc(o.buyer_name || 'Anonymous')}</td>
+        <td class="muted">${esc(o.country || 'â€“')}</td>
+        <td class="num mono">${Number(o.total_amount).toFixed(2)} ${esc(o.currency)}</td>
+        <td><span class="pill ${status[1] === 'muted' ? 'muted' : ''}"><span class="dot ${status[1] === 'amber' ? 'warn' : status[1] === 'muted' ? '' : ''}" style="${status[1] === 'muted' ? 'background:var(--muted)' : ''}"></span>${status[0]}</span></td>
+        <td class="mono ${hasTracking(o) ? '' : 'muted'}">${hasTracking(o) ? esc(o.tracking_code) : (o.is_shipped && !isClosed(o) ? 'missing' : 'â€“')}</td>
+        <td>${flag}</td></tr>`;
+    }).join('');
+  }
+
+  $('orders-tbody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) openOrderModal(tr.dataset.id);
+  });
+
+  function nextPage() { if (currentOffset + pageSize < filteredOrders.length) { currentOffset += pageSize; renderOrders(); } }
+  function prevPage() { if (currentOffset >= pageSize) { currentOffset -= pageSize; renderOrders(); } }
+
+  function openOrderModal(orderId) {
+    const o = allOrders.find((x) => String(x.receipt_id) === String(orderId));
+    if (!o) return;
+    const a = alertOrderMap[String(o.receipt_id)];
+    $('modal-order-title').textContent = `Order #${o.receipt_id}`;
+    $('modal-order-timestamp').textContent = `Placed ${fmtDate(o.created_at)}`;
+    const row = (k, v) => `<div class="row"><span>${k}</span><span>${v}</span></div>`;
+    $('modal-content').innerHTML =
+      (a ? `<div class="notice"><b>${esc(a.severity)}</b> Â· ${esc(a.message)}<div class="modal-actions" style="margin-top:8px"><button class="btn" data-resolve="${esc(a.id)}">Resolve alert</button></div></div>` : '') +
+      row('Status', esc(o.status)) +
+      row('Total', `${Number(o.total_amount).toFixed(2)} ${esc(o.currency)}`) +
+      row('Buyer', esc(o.buyer_name || 'Anonymous')) +
+      row('Ship to', esc(o.shipping_address || o.country || 'â€“')) +
+      row('Paid', o.paid_at ? fmtDate(o.paid_at) : 'â€“') +
+      row('Shipped', o.shipped_at ? fmtDate(o.shipped_at) : 'Not yet') +
+      row('Tracking', hasTracking(o) ? `<span class="mono">${esc(o.tracking_code)}</span> <button class="link" data-copy="${esc(o.tracking_code)}">Copy</button>` : 'None') +
+      row('Source', esc(o.source));
+    $('order-modal').classList.add('open');
+  }
+
+  $('modal-content').addEventListener('click', async (e) => {
+    const r = e.target.closest('[data-resolve]');
+    if (r) { await resolveAlert(Number(r.dataset.resolve)); closeOrderModal(); return; }
+    const c = e.target.closest('[data-copy]');
+    if (c) copyToClipboard(c.dataset.copy);
+  });
+
+  function closeOrderModal() { $('order-modal').classList.remove('open'); }
+
+  function copyToClipboard(text) {
+    const done = () => toast('Copied');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+    else fallbackCopy(text, done);
+  }
+  function fallbackCopy(text, done) {
+    const el = document.createElement('textarea');
+    el.value = text; document.body.appendChild(el); el.select();
+    document.execCommand('copy'); document.body.removeChild(el); done();
+  }
+
+  async function refreshAll() { await Promise.all([loadStats(), loadAlerts()]); applyFiltersAndRender(false); }
+
+  async function resolveAlert(id) {
+    try {
+      const res = await fetch(`/api/alerts/${id}/resolve`, { method: 'POST' });
+      toast(res.ok ? 'Alert resolved' : 'Could not resolve alert');
+      await refreshAll();
+    } catch (e) { toast('Network error'); }
+  }
+
+  async function resolveAllVisibleAlerts() {
+    const list = rawAlerts.filter((a) => currentAlertSeverity === 'all' || a.severity === currentAlertSeverity);
+    if (!list.length) return toast('No open alerts');
+    if (!confirm(`Resolve ${list.length} alert${list.length > 1 ? 's' : ''}?`)) return;
+    try {
+      const q = currentAlertSeverity !== 'all' ? `?severity=${currentAlertSeverity}` : '';
+      const res = await fetch(`/api/alerts/resolve-all${q}`, { method: 'POST' });
+      if (res.ok) toast(`Resolved ${(await res.json()).resolved_count} alerts`);
+      await refreshAll();
+    } catch (e) { toast('Network error'); }
+  }
+
+  async function triggerSync() {
+    const btn = $('sync-btn'), text = $('sync-btn-text');
+    btn.disabled = true; text.textContent = 'Syncingâ€¦';
+    try {
+      const res = await fetch('/api/sync', { method: 'POST' });
+      if (res.ok) {
+        const d = await res.json();
+        toast(`Synced ${d.run ? d.run.orders_fetched : 0} orders`);
+        await Promise.all([loadStats(), loadAlerts(), loadOrders()]);
+      } else toast('Sync failed');
+    } catch (e) { toast('Network error'); }
+    finally { btn.disabled = false; text.textContent = 'Sync now'; }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); $('search-input').focus(); }
+    if (e.key === 'Escape') closeOrderModal();
+  });
+
+  loadStats(); loadAlerts().then(loadOrders);
+  setInterval(loadStats, 15000);
+  setInterval(loadAlerts, 15000);
+</script>
+</body>
+</html>
