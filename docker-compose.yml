@@ -1,0 +1,41 @@
+services:
+  web:
+    build: .
+    container_name: shopwatch-web
+    restart: unless-stopped
+    # Bound to localhost on purpose: the dashboard has no login.
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      - DB_PATH=/app/data/shopwatch.db
+      - TOKENS_DIR=/app/tokens
+    volumes:
+      - shopwatch-data:/app/data
+      - ./tokens:/app/tokens
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  worker:
+    build: .
+    container_name: shopwatch-worker
+    restart: unless-stopped
+    command: ["python", "scheduler.py"]
+    env_file: .env
+    environment:
+      - DB_PATH=/app/data/shopwatch.db
+      - TOKENS_DIR=/app/tokens
+    volumes:
+      - shopwatch-data:/app/data
+      - ./tokens:/app/tokens
+      # CSV fallback: put orders_<shop>.csv files in ./csv and set CSV_PATH or use that name
+      # - ./csv:/app/csv:ro
+    depends_on:
+      - web
+
+volumes:
+  shopwatch-data:
