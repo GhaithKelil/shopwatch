@@ -1,0 +1,15 @@
+.venv/
+.env
+tokens_*.json
+tokens/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+# order exports contain customer details
+*.csv
+!tests/fixtures/*.csv
+data/
