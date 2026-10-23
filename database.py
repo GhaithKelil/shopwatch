@@ -458,6 +458,22 @@ def auto_resolve_cleared_alerts(db_path: Optional[str] = None) -> int:
         )
         resolved_count += c1.rowcount
 
+        # Resolve payment_not_completed once the order is paid or canceled
+        c_paid = conn.execute(
+            """
+            UPDATE alerts SET is_resolved = 1, resolved_at = ?
+            WHERE is_resolved = 0 AND rule_name = 'payment_not_completed'
+              AND EXISTS (
+                  SELECT 1 FROM orders o
+                  WHERE o.receipt_id = alerts.order_id AND o.shop_name = alerts.shop_name
+                    AND (o.is_paid = 1 OR o.paid_at IS NOT NULL
+                     OR LOWER(o.status) IN ('canceled', 'refunded', 'fully refunded', 'cancelled'))
+              )
+            """,
+            (now_str,),
+        )
+        resolved_count += c_paid.rowcount
+
         # 2. Resolve missing_tracking if tracking code was added or order canceled
         c2 = conn.execute(
             """

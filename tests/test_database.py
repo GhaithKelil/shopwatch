@@ -307,3 +307,16 @@ def test_cleared_aggregate_alerts_are_resolved(temp_db):
     insert_alert(Alert(order_id=None, shop_name="A", rule_name="refund_spike",
                        severity="CRITICAL", message="spike again", created_at=now), temp_db)
     assert resolve_cleared_aggregate_alerts({("refund_spike", None, "A")}, temp_db) == 0
+
+
+def test_payment_alert_auto_resolves_when_paid(temp_db):
+    now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+    unpaid = Order(receipt_id="7001", shop_name="A", source="api", created_at=now,
+                   status="Open", total_amount=1, currency="EUR", is_paid=False)
+    upsert_orders_bulk([unpaid], temp_db)
+    insert_alert(Alert(order_id="7001", shop_name="A", rule_name="payment_not_completed",
+                       severity="WARNING", message="unpaid", created_at=now), temp_db)
+
+    assert auto_resolve_cleared_alerts(temp_db) == 0
+    upsert_orders_bulk([unpaid.model_copy(update={"is_paid": True, "paid_at": now})], temp_db)
+    assert auto_resolve_cleared_alerts(temp_db) == 1

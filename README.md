@@ -11,15 +11,16 @@ Order monitoring for Etsy sellers. ShopWatch pulls your orders from the Etsy API
 | Rule | Severity | Fires when |
 | :--- | :--- | :--- |
 | Late unshipped | Critical | A paid order is still unshipped after 3 days |
+| Payment not completed | Warning | An order is still unpaid 24 hours after it was placed |
 | Missing tracking | Warning | An order is marked shipped but has no tracking number |
 | Stuck in transit | Warning | An order shipped more than 14 days ago and has no tracking number |
 | Refund spike | Critical | More than 10% of a shop's orders in the last 30 days were refunded or cancelled |
 | Buyer velocity | Warning | The same buyer places 3 or more orders within 24 hours |
 | Sync stale | Critical | No successful sync in the last 2 hours |
 
-All thresholds are settings in `.env`. Etsy does not report delivery, so "stuck in transit" can only flag shipments you have no way to follow. A tracked parcel never triggers it.
+All thresholds are settings in `.env`. Payment checks only apply to API orders: Etsy's CSV export lists paid orders only. Etsy does not report delivery, so "stuck in transit" can only flag shipments you have no way to follow. A tracked parcel never triggers it.
 
-Alerts are de-duplicated: an open alert is sent once, and it closes itself when the problem goes away (the order ships, tracking is added, and so on). You can also resolve alerts by hand on the dashboard.
+Alerts are de-duplicated: an open alert is sent once, and it closes itself when the problem goes away (the order ships, the payment goes through, tracking is added, and so on). You can also resolve alerts by hand on the dashboard.
 
 ## How it works
 

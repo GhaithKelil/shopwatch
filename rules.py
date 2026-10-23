@@ -6,6 +6,7 @@ from models import Alert, Order, utc_now
 
 INACTIVE_STATUSES = ("canceled", "cancelled", "refunded", "fully refunded")
 DEFAULT_LATE_UNSHIPPED_DAYS = 3
+DEFAULT_UNPAID_HOURS = 24
 DEFAULT_STUCK_TRANSIT_DAYS = 14
 DEFAULT_REFUND_SPIKE_PCT = 10.0
 DEFAULT_REFUND_SPIKE_WINDOW_DAYS = 30
@@ -59,6 +60,42 @@ def rule_late_unshipped(
             message=(
                 f"Order #{order.receipt_id} ({order.shop_name}) paid on {paid_date} "
                 f"has remained unshipped for {days} days (threshold: {threshold_days} days)."
+            ),
+            created_at=current_time,
+        )
+    return None
+
+
+def rule_payment_not_completed(
+    order: Order,
+    now: Optional[datetime] = None,
+    threshold_hours: int = DEFAULT_UNPAID_HOURS,
+) -> Optional[Alert]:
+    """
+    Flag orders whose payment still has not gone through threshold_hours after they were placed.
+    Severity: WARNING
+    """
+    if order.status.lower() in INACTIVE_STATUSES:
+        return None
+
+    if order.is_paid or order.paid_at is not None:
+        return None
+
+    created = _ensure_utc(order.created_at)
+    current_time = _ensure_utc(now) or utc_now()
+    age = current_time - created
+
+    if age >= timedelta(hours=threshold_hours):
+        hours = round(age.total_seconds() / 3600, 1)
+        return Alert(
+            order_id=order.receipt_id,
+            shop_name=order.shop_name,
+            rule_name="payment_not_completed",
+            severity="WARNING",
+            message=(
+                f"Order #{order.receipt_id} ({order.shop_name}) placed on "
+                f"{created.strftime('%Y-%m-%d')} is still unpaid after {hours} hours "
+                f"(threshold: {threshold_hours} hours)."
             ),
             created_at=current_time,
         )
@@ -299,12 +336,13 @@ def evaluate_rules(
     now: Optional[datetime] = None,
     config: Optional[Dict[str, Any]] = None,
 ) -> List[Alert]:
-    """Run all 6 business rules across orders and system state, returning generated alerts."""
+    """Run all business rules across orders and system state, returning generated alerts."""
     cfg = config or {}
     current_time = _ensure_utc(now) or utc_now()
     alerts: List[Alert] = []
 
     late_days = cfg.get("late_unshipped_days", DEFAULT_LATE_UNSHIPPED_DAYS)
+    unpaid_hours = cfg.get("unpaid_hours", DEFAULT_UNPAID_HOURS)
     transit_days = cfg.get("stuck_transit_days", DEFAULT_STUCK_TRANSIT_DAYS)
     transit_max_days = cfg.get("stuck_transit_max_days", None)
     refund_pct = cfg.get("refund_spike_pct", DEFAULT_REFUND_SPIKE_PCT)
@@ -316,6 +354,10 @@ def evaluate_rules(
     # Per-order rules
     for order in orders:
         alert = rule_late_unshipped(order, now=current_time, threshold_days=late_days)
+        if alert:
+            alerts.append(alert)
+
+        alert = rule_payment_not_completed(order, now=current_time, threshold_hours=unpaid_hours)
         if alert:
             alerts.append(alert)
 

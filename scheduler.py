@@ -174,6 +174,7 @@ def run_sync_cycle(
     # Load custom thresholds from environment if defined
     rule_config = {
         "late_unshipped_days": int(os.environ.get("LATE_UNSHIPPED_DAYS", 3)),
+        "unpaid_hours": int(os.environ.get("UNPAID_HOURS", 24)),
         "stuck_transit_days": int(os.environ.get("STUCK_TRANSIT_DAYS", 14)),
         "stuck_transit_max_days": int(os.environ.get("STUCK_TRANSIT_MAX_DAYS", 60)),
         "refund_spike_pct": float(os.environ.get("REFUND_SPIKE_THRESHOLD_PCT", 10.0)),
@@ -188,7 +189,7 @@ def run_sync_cycle(
         now=started_at,
         config=rule_config,
     )
-    logger.info(f"Evaluated 6 rules against {len(all_orders)} orders: {len(generated_alerts)} raw alerts found.")
+    logger.info(f"Evaluated rules against {len(all_orders)} orders: {len(generated_alerts)} raw alerts found.")
 
     # 5. Deduplicate and dispatch alerts
     resolve_cleared_aggregate_alerts(

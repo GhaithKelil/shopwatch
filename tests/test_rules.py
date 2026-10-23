@@ -4,6 +4,7 @@ from models import Order
 from rules import (
     rule_late_unshipped,
     rule_missing_tracking,
+    rule_payment_not_completed,
     rule_stuck_in_transit,
     rule_refund_spike,
     rule_fraud_velocity,
@@ -290,3 +291,40 @@ def test_velocity_alert_uses_numerically_latest_order(base_order):
 
     alerts = rule_fraud_velocity(orders, now=now)
     assert alerts[0].order_id == "11"
+
+
+def _unpaid(order, now, hours_ago):
+    order.is_paid = False
+    order.paid_at = None
+    order.status = "Open"
+    order.created_at = now - timedelta(hours=hours_ago)
+    return order
+
+
+def test_payment_not_completed_flags_old_unpaid_order(base_order):
+    now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+    alert = rule_payment_not_completed(_unpaid(base_order, now, 30), now=now, threshold_hours=24)
+    assert alert is not None
+    assert alert.rule_name == "payment_not_completed"
+    assert alert.severity == "WARNING"
+    assert "still unpaid after 30.0 hours" in alert.message
+
+
+def test_payment_not_completed_waits_for_threshold(base_order):
+    now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+    assert rule_payment_not_completed(_unpaid(base_order, now, 5), now=now, threshold_hours=24) is None
+
+
+def test_payment_not_completed_ignores_paid_and_canceled(base_order):
+    now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+    assert rule_payment_not_completed(base_order, now=now) is None  # paid fixture
+
+    canceled = _unpaid(base_order, now, 48)
+    canceled.status = "Canceled"
+    assert rule_payment_not_completed(canceled, now=now) is None
+
+
+def test_evaluate_rules_includes_payment_rule(base_order):
+    now = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+    alerts = evaluate_rules([_unpaid(base_order, now, 48)], last_successful_run=now, now=now)
+    assert "payment_not_completed" in {a.rule_name for a in alerts}
