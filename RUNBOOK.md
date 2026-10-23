@@ -23,6 +23,7 @@ The dashboard's **Last sync** tile shows when the last run happened and whether 
 | No Telegram messages | Missing or wrong token or chat ID, or Telegram unreachable | Unsent alerts are kept and retried each sync. Test: `python -c "from notifier import send_telegram_message; print(send_telegram_message('test'))"` |
 | `database is locked` | Something else holds the database open | Stop extra processes using the same file. Normal use (one worker, one web server) does not hit this |
 | `/health` returns 503 | Last successful sync is older than `SYNC_STALE_MAX_HOURS`, or every run failed | Read the worker logs; fix the cause above |
+| An order looks out of date on the dashboard | Normal syncs only fetch orders Etsy marks as changed | Run `python scheduler.py --once --full` to re-download every order |
 | A shop's alerts look wrong after adding a second shop | Shop name mismatch | Use one consistent name per shop in `SHOP_NAMES` and file names |
 
 ## Re-authorizing a shop

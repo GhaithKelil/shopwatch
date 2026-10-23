@@ -4,7 +4,7 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -13,11 +13,13 @@ from database import (
     auto_resolve_cleared_alerts,
     get_all_orders_for_rules,
     get_db_path,
+    get_last_api_sync,
     get_last_run,
     get_last_successful_run,
     record_run,
     resolve_cleared_aggregate_alerts,
     resolve_sync_stale_alerts,
+    set_last_api_sync,
     upsert_orders_bulk,
 )
 
@@ -58,9 +60,25 @@ def get_tokens_path(shop: str) -> str:
     return os.path.join(os.environ.get("TOKENS_DIR", "."), f"tokens_{shop.lower()}.json")
 
 
-def _ingest_shop(shop: str, csv_file: Optional[str], single_shop: bool, errors: list[str]) -> list[Order]:
-    """Fetch one shop's orders from the Etsy API, falling back to a CSV export."""
+# Re-fetch a little before the last sync so clock differences never skip a change
+SYNC_OVERLAP = timedelta(hours=1)
+
+
+def _ingest_shop(
+    shop: str,
+    csv_file: Optional[str],
+    single_shop: bool,
+    errors: list[str],
+    db_path: Optional[str] = None,
+    full_sync: bool = False,
+) -> tuple[list[Order], Optional[datetime]]:
+    """
+    Fetch one shop's orders from the Etsy API, falling back to a CSV export.
+    Returns the orders and, when the API was used, the time to record as the shop's last sync.
+    After the first full download only receipts changed since the last sync are requested.
+    """
     orders: list[Order] = []
+    api_synced_at: Optional[datetime] = None
 
     # 1. Etsy API
     token_path = get_tokens_path(shop)
@@ -71,9 +89,14 @@ def _ingest_shop(shop: str, csv_file: Optional[str], single_shop: bool, errors: 
             logger.info(f"Ingesting live API receipts for shop '{shop}'...")
             from etsy import Etsy
 
-            receipts = Etsy(shop.lower()).receipts()
+            last_sync = None if full_sync else get_last_api_sync(shop, db_path)
+            since = (last_sync - SYNC_OVERLAP).timestamp() if last_sync else None
+            fetch_started = utc_now()
+            receipts = Etsy(shop.lower()).receipts(min_last_modified=since)
             orders.extend(ApiOrderLoader(shop_name=shop).load_receipts(receipts))
-            logger.info(f"Loaded {len(orders)} orders from Etsy API for '{shop}'.")
+            api_synced_at = fetch_started
+            scope = f"changed since {last_sync:%Y-%m-%d %H:%M} UTC" if last_sync else "full download"
+            logger.info(f"Loaded {len(orders)} orders from Etsy API for '{shop}' ({scope}).")
         except Exception as exc:
             err = f"Failed to ingest orders via Etsy API for '{shop}': {exc}"
             logger.error(err)
@@ -83,13 +106,13 @@ def _ingest_shop(shop: str, csv_file: Optional[str], single_shop: bool, errors: 
     else:
         logger.info(f"Token file '{token_path}' not found; using CSV fallback for '{shop}'.")
 
-    # 2. CSV export: used when the API gave nothing, or when a file is passed explicitly
+    # 2. CSV export: used when the API is not available, or when a file is passed explicitly
     candidates = [csv_file, f"orders_{shop.lower()}.csv"]
     if single_shop:
         candidates[1:1] = [os.environ.get("CSV_PATH"), "orders.csv"]
     active_csv = next((c for c in candidates if c and os.path.exists(c)), None)
 
-    if (not orders or csv_file is not None) and active_csv:
+    if (api_synced_at is None or csv_file is not None) and active_csv:
         try:
             logger.info(f"Ingesting CSV orders from '{active_csv}' for shop '{shop}'...")
             csv_orders = CsvOrderLoader(shop_name=shop).load_from_file(active_csv)
@@ -99,13 +122,14 @@ def _ingest_shop(shop: str, csv_file: Optional[str], single_shop: bool, errors: 
             err = f"Failed to ingest CSV '{active_csv}': {exc}"
             logger.error(err)
             errors.append(err)
-    return orders
+    return orders, api_synced_at
 
 
 def run_sync_cycle(
     db_path: Optional[str] = None,
     csv_file: Optional[str] = None,
     shop_name: Optional[str] = None,
+    full_sync: bool = False,
 ) -> RunLog:
     """
     Execute one ingestion, evaluation and alerting cycle for every configured shop.
@@ -118,13 +142,21 @@ def run_sync_cycle(
     errors: list[str] = []
 
     # 1-2. Ingest each shop
+    api_synced: dict[str, datetime] = {}
     for shop in shops:
-        fetched_orders.extend(_ingest_shop(shop, csv_file, len(shops) == 1, errors))
+        shop_orders, synced_at = _ingest_shop(shop, csv_file, len(shops) == 1, errors, db_path, full_sync)
+        fetched_orders.extend(shop_orders)
+        if synced_at:
+            api_synced[shop] = synced_at
 
     # 3. Upsert newly fetched orders into SQLite storage
     if fetched_orders:
         upsert_orders_bulk(fetched_orders, db_path=db_path)
         logger.info(f"Persisted/updated {len(fetched_orders)} orders in database.")
+
+    # Only move a shop's sync point forward once its orders are safely stored
+    for shop, synced_at in api_synced.items():
+        set_last_api_sync(shop, synced_at, db_path=db_path)
 
     # 4. Fetch state and run Problem Detection Rules
     all_orders = get_all_orders_for_rules(db_path=db_path)
@@ -198,6 +230,11 @@ def main():
     parser = argparse.ArgumentParser(description="ShopWatch Continuous Order Monitoring Daemon")
     parser.add_argument("--once", action="store_true", help="Execute single sync cycle and exit")
     parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Re-download every order from Etsy on the first cycle instead of only recent changes",
+    )
+    parser.add_argument(
         "--interval",
         type=int,
         default=int(os.environ.get("SYNC_INTERVAL_SECONDS", 900)),
@@ -221,13 +258,15 @@ def main():
     logger.info(f"Starting ShopWatch daemon (interval={args.interval}s, db='{db_path}')")
 
     if args.once:
-        run_sync_cycle(db_path=db_path, csv_file=args.csv)
+        run_sync_cycle(db_path=db_path, csv_file=args.csv, full_sync=args.full)
         logger.info("Single sync run finished.")
         return
 
+    full_sync = args.full
     while not _SHUTDOWN_REQUESTED:
         try:
-            run_sync_cycle(db_path=db_path, csv_file=args.csv)
+            run_sync_cycle(db_path=db_path, csv_file=args.csv, full_sync=full_sync)
+            full_sync = False
         except Exception as exc:
             logger.exception(f"Unexpected error in sync daemon loop: {exc}")
 

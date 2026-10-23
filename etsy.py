@@ -54,12 +54,15 @@ class Etsy:
             self.shop_id = self.get(f"/users/{self.user_id}/shops")["shop_id"]
         return self.shop_id
 
-    def receipts(self, min_created=None):
+    def receipts(self, min_created=None, min_last_modified=None):
+        """All receipts, or only those changed since min_last_modified (unix seconds)."""
         out, offset = [], 0
         while True:
             params = {"limit": 100, "offset": offset}
             if min_created:
                 params["min_created"] = min_created
+            if min_last_modified:
+                params["min_last_modified"] = int(min_last_modified)
             data = self.get(f"/shops/{self.get_shop_id()}/receipts", params)
             results = data.get("results", [])
             out += results

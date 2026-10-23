@@ -132,6 +132,11 @@ def _init_schema(path: str, db_path: Optional[str]) -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at);
+
+            CREATE TABLE IF NOT EXISTS shop_sync_state (
+                shop_name TEXT PRIMARY KEY,
+                last_api_sync TEXT NOT NULL
+            );
         """)
 
 
@@ -532,6 +537,28 @@ def resolve_sync_stale_alerts(db_path: Optional[str] = None) -> int:
         )
         return cursor.rowcount
 
+
+
+def get_last_api_sync(shop_name: str, db_path: Optional[str] = None) -> Optional[datetime]:
+    """When this shop's orders were last fetched from the Etsy API, or None if never."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT last_api_sync FROM shop_sync_state WHERE shop_name = ?", (shop_name,)
+        ).fetchone()
+        return datetime.fromisoformat(row["last_api_sync"]) if row else None
+
+
+def set_last_api_sync(shop_name: str, synced_at: datetime, db_path: Optional[str] = None) -> None:
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO shop_sync_state (shop_name, last_api_sync) VALUES (?, ?)
+            ON CONFLICT(shop_name) DO UPDATE SET last_api_sync = excluded.last_api_sync
+            """,
+            (shop_name, synced_at.isoformat()),
+        )
 
 
 def record_run(run_log: RunLog, db_path: Optional[str] = None) -> int:

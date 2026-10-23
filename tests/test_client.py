@@ -115,3 +115,15 @@ def test_client_receipts_pagination(mock_get, mock_token_file):
     receipts = client.receipts()
     assert len(receipts) == 150
     assert mock_get.call_count == 2
+
+
+@patch("requests.get")
+def test_client_receipts_passes_min_last_modified(mock_get, mock_token_file):
+    client = etsy.Etsy("testshop")
+    client.shop_id = 9999
+    mock_get.return_value = MagicMock(status_code=200)
+    mock_get.return_value.json.return_value = {"count": 0, "results": []}
+
+    client.receipts(min_last_modified=1790683800.7)
+
+    assert mock_get.call_args[1]["params"]["min_last_modified"] == 1790683800

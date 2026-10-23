@@ -36,7 +36,7 @@ flowchart LR
     APP --> DASH["Dashboard"]
 ```
 
-- `scheduler.py` is the worker. Every 15 minutes it fetches orders, runs the rules and sends new alerts.
+- `scheduler.py` is the worker. Every 15 minutes it fetches orders, runs the rules and sends new alerts. The first sync downloads every order; after that it only asks Etsy for orders changed since the last sync, so it stays fast and light on your API quota. Run `python scheduler.py --once --full` to download everything again.
 - `app.py` is the web server: the dashboard at `/` and a JSON API (docs at `/docs`).
 - Both share one SQLite database file.
 
